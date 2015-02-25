@@ -25,30 +25,31 @@ our sub verify(XML::Element $signature) is export {
         fail "Reference failure" unless check_reference($_);
     }
 
-    my $sign-data = MIME::Base64.decode($signature.elements(:TAG($prefix ~ 'SignatureValue'), :SINGLE).contents);
-    my $cert = $signature.elements(:TAG($prefix ~ 'KeyInfo'), :SINGLE)\
-                         .elements(:TAG($prefix ~ 'X509Data'), :SINGLE)\
-                         .elements(:TAG($prefix ~ 'X509Certificate'), :SINGLE).contents;
+    my $sign-data = MIME::Base64.decode($signature.elements(:TAG($prefix ~ 'SignatureValue'), :SINGLE).contents.join);
+    my @certs = $signature.elements(:TAG($prefix ~ 'KeyInfo'), :SINGLE)\
+                          .elements(:TAG($prefix ~ 'X509Data'), :SINGLE)\
+                          .elements(:TAG($prefix ~ 'X509Certificate'));
+    @certs .= map({ $_.contents.join });
 
     # fixup cert to look like PEM
-    $cert ~~ s:g/\n//;
-    my @lines;
-    my $i = 0;
-    while $cert.length > 64 {
-        @lines.push($cert.substr($i*64, 64));
-        $i++;
-    }
-    @lines.push($cert.substr($i*64));
+    for @certs -> $cert is rw {
+        $cert ~~ s:g/\s+//;
+        my @lines;
+        my $i = 0;
+        while $cert.chars > ($i + 1)*64 {
+            @lines.push($cert.substr($i*64, 64));
+            $i++;
+        }
+        @lines.push($cert.substr($i*64));
 
-    $cert = "-----BEGIN CERTIFICATE-----\n" ~ @lines.join("\n") ~ "\n-----END CERTIFICATE-----";
+        $cert = "-----BEGIN CERTIFICATE-----\n" ~ @lines.join("\n") ~ "\n-----END CERTIFICATE-----";
+    }
     ##
 
-    my $rsa = OpenSSL::RSAKey.new(:x509-pem($cert));
+    my $canonicalization-method = $signed-info.elements(:TAG($prefix ~ 'CanonicalizationMethod'), :SINGLE).attribs<Algorithm>;
 
-    my $canonicalization-method = $signed-info.elements(:TAG($prefix ~ 'CanonicalizationMethod'), :SINGLE).contents;
-
-    my @path = $signature.name;
-    my $tmp = $signature;
+    my @path = $signed-info.name;
+    my $tmp = $signed-info;
     while $tmp = $tmp.parent {
         if $tmp ~~ XML::Document {
             last;
@@ -70,7 +71,12 @@ our sub verify(XML::Element $signature) is export {
         fail "Unable to understand canonicalization method: $canonicalization-method";
     }
 
-    fail "Signature failure" unless $rsa.verify($canon, $sign-data);
+    my $good = False;
+    for @certs {
+        my $rsa = OpenSSL::RSAKey.new(:x509-pem($_));
+        $good = True if $rsa.verify($canon.encode, $sign-data);
+    }
+    fail "Bad signature" unless $good;
     True;
 }
 
@@ -84,6 +90,7 @@ sub check_reference(XML::Element $reference) {
     my $data;
     if $uri ~~ /^\#/ {
         $data = $reference.ownerDocument.root.getElementById($uri.substr(1));
+        fail "Unable to get data" unless $data;
     }
     else {
         fail "Unable to understand URI: $uri";
@@ -95,6 +102,7 @@ sub check_reference(XML::Element $reference) {
         @transforms = $transform.elements(:TAG($prefix ~ 'Transform'));
     }
 
+    my $canonical = 1;
     for @transforms {
         if $_.attrs<Algorithm> eq 'http://www.w3.org/2000/09/xmldsig#enveloped-signature' {
             # enveloped signature
@@ -106,36 +114,39 @@ sub check_reference(XML::Element $reference) {
         }
         elsif    $_.attrs<Algorithm> eq 'http://www.w3.org/2001/10/xml-exc-c14n#'
               || $_.attrs<Algorithm> eq 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315' {
-            # canonicalization
-
-            my @path = $data.name;
-            my $tmp = $data;
-            while $tmp = $tmp.parent {
-                if $tmp ~~ XML::Document {
-                    last;
-                }
-                @path.unshift($tmp.name);
-            }
-
-            if @path.elems <= 1 {
-                # no subset - we're canonicalizing the whole document
-                $data = canonical($data.ownerDocument);
-            }
-
-            if $_.attrs<Algorithm> ~~ /exc/ {
-                my @namespaces = $_.elements(:TAG('InclusiveNamespaces'), :SINGLE).attrs<PrefixList>.split(' ');
-                $data = canonical($data.ownerDocument, :exclusive, :subset(@path.join('/')), :namespaces(@namespaces));
-            }
-            else {
-                $data = canonical($data.ownerDocument, :subset(@path.join('/')));
-            }
+            $canonical = $_.attrs<Algorithm>;
         }
         else {
             fail "Unable to understand transform algorithm: " ~ $_.attrs<Algorithm>;
         }
     }
 
-    my $digest = sha1($data.encode);
+    if $canonical {
+        # canonicalization
+        my @path = $data.name;
+        my $tmp = $data;
+        while $tmp = $tmp.parent {
+            if $tmp ~~ XML::Document {
+                last;
+            }
+            @path.unshift($tmp.name);
+        }
+
+        if @path.elems <= 1 {
+            # no subset - we're canonicalizing the whole document
+            $data = canonical($data.ownerDocument);
+        }
+
+        if $canonical ~~ /exc/ {
+            my @namespaces = $_.elements(:TAG('InclusiveNamespaces'), :SINGLE).attrs<PrefixList>.split(' ');
+            $data = canonical($data.ownerDocument, :exclusive, :subset(@path.join('/')), :namespaces(@namespaces));
+        }
+        else {
+            $data = canonical($data.ownerDocument, :subset(@path.join('/')));
+        }
+    }
+
+    my $digest = sha1($data.Str.encode);
     $digest = MIME::Base64.encode($digest);
 
     if $digest eq $reference.elements(:TAG($prefix ~ 'DigestValue'), :SINGLE).contents {
