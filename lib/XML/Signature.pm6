@@ -119,7 +119,10 @@ sub check_reference(XML::Element $reference) {
             # remove ourselves from the data
 
             # make a copy - we don't want to mess up the original document
-            $data = $data.ownerDocument.Str.&from-xml.getElementById($uri.substr(1));
+            my $idattr = $data.ownerDocument.root.idattr;
+            $data = $data.ownerDocument.Str.&from-xml;
+            $data.idattr = $idattr;
+            $data = $data.root.getElementById($uri.substr(1));
             $data.elements(:TAG($prefix ~ 'Signature'))>>.remove;
         }
         elsif    $_.attrs<Algorithm> eq 'http://www.w3.org/2001/10/xml-exc-c14n#'
