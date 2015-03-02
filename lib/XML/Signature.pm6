@@ -98,8 +98,8 @@ sub check_reference(XML::Element $reference) {
     my $uri = $reference.attribs<URI>;
 
     my $data;
-    if $uri ~~ /^\#/ {
-        if ($reference.ownerDocument.root.attribs{$reference.ownerDocument.root.idattr} || '') eq $uri.substr(1) {
+    if $uri ~~ /^\#/  || !$uri {
+        if !$uri || (($reference.ownerDocument.root.attribs{$reference.ownerDocument.root.idattr} || '') eq $uri.substr(1)) {
             $data = $reference.ownerDocument.root;
         }
         else {
@@ -127,7 +127,7 @@ sub check_reference(XML::Element $reference) {
             my $idattr = $data.ownerDocument.root.idattr;
             $data = $data.ownerDocument.&canonical.&from-xml;
             $data.root.idattr = $idattr;
-            if ($data.root.attribs{$idattr} || '') eq $uri.substr(1) {
+            if !$uri || (($data.root.attribs{$idattr} || '') eq $uri.substr(1)) {
                 $data = $data.root;
             }
             else {
@@ -182,7 +182,7 @@ sub check_reference(XML::Element $reference) {
     }
     $digest = MIME::Base64.encode($digest);
 
-    if $digest eq $reference.elements(:TAG($prefix ~ 'DigestValue'), :SINGLE).contents {
+    if $digest eq $reference.elements(:TAG($prefix ~ 'DigestValue'), :SINGLE).contents.join {
         True;
     }
     else {
