@@ -26,7 +26,9 @@ our sub verify(XML::Element $signature) is export {
     }
 
     my $sign-data = MIME::Base64.decode($signature.elements(:TAG($prefix ~ 'SignatureValue'), :SINGLE).contents.join);
-    my @certs = $signature.elements(:TAG($prefix ~ 'KeyInfo'), :SINGLE)\
+
+                 # this is a bit of a hack
+    my @certs = ($signature.elements(:TAG($prefix ~ 'KeyInfo'), :SINGLE) || $signature.elements(:TAG('KeyInfo'), :SINGLE))\
                           .elements(:TAG($prefix ~ 'X509Data'), :SINGLE)\
                           .elements(:TAG($prefix ~ 'X509Certificate'));
     @certs .= map({ $_.contents.join });
