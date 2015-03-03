@@ -7,7 +7,7 @@ use MIME::Base64;
 
 module XML::Signature;
 
-our sub sign(XML::Element $signature, OpenSSL::RSAKey $private, Str $cert-pem) is export {
+our sub sign(XML::Element $document, :$private-pem, :$x509-pem, :$enveloping, :$enveloped, :$detached) is export {
     die "Signing NYI";
 }
 
