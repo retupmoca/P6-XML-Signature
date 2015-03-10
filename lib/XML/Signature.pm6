@@ -35,7 +35,15 @@ our sub sign(XML::Element $document is rw, :$private-pem!, :$x509-pem! is copy, 
                                         make-xml('ds:DigestValue', $digest)));
     my $signature = make-xml('ds:Signature', $signed-info);
     $signature.setNamespace('http://www.w3.org/2000/09/xmldsig#', 'ds');
-    $document.append($signature);
+    if $enveloped ~~ XML::Node {
+        $document.before($enveloped, $signature);
+    }
+    elsif $enveloped {
+        $document.append($signature);
+    }
+    else {
+        die "Non-enveloped signature NYI!";
+    }
     my $signed-info-canon = canonical($document, :exclusive, :subset($document.name~'/ds:Signature/ds:SignedInfo'));
 
     my $rsa = OpenSSL::RSAKey.new(:$private-pem);
