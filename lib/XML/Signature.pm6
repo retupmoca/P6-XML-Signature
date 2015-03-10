@@ -19,7 +19,7 @@ our sub sign(XML::Element $document is rw, :$private-pem!, :$x509-pem! is copy, 
         $id = $document.attribs<ID>;
     }
     else {
-        $id = UUID.new.Str;
+        $id = '_' ~ UUID.new.Str;
         $document.attribs<ID> = $id;
     }
 
@@ -210,6 +210,8 @@ sub check_reference(XML::Element $reference) {
         }
     }
 
+    say $data;
+
     my $digest-method = $reference.elements(:TAG($prefix ~ 'DigestMethod'), :SINGLE).attribs<Algorithm>;
 
     my $digest;
@@ -223,6 +225,8 @@ sub check_reference(XML::Element $reference) {
         fail "Unable to understand digest method: " ~ $digest-method;
     }
     $digest = MIME::Base64.encode($digest);
+
+    say $digest;
 
     if $digest eq $reference.elements(:TAG($prefix ~ 'DigestValue'), :SINGLE).contents.join {
         True;
