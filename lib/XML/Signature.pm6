@@ -23,7 +23,7 @@ our sub sign(XML::Element $document is rw, :$private-pem!, :$x509-pem! is copy, 
         $document.attribs<ID> = $id;
     }
 
-    my $digest = MIME::Base64.encode(sha256(canonical($document)));
+    my $digest = MIME::Base64.encode(sha256(canonical($document, :exclusive)));
     my $signed-info = make-xml('ds:SignedInfo',
                                make-xml('ds:CanonicalizationMethod', :Algorithm('http://www.w3.org/2001/10/xml-exc-c14n#')),
                                make-xml('ds:SignatureMethod', :Algorithm('http://www.w3.org/2001/04/xmldsig-more#rsa-sha256')),
